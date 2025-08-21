@@ -1,0 +1,2 @@
+[console_scripts]
+google-docs-tool = src.server.mcp_server:main

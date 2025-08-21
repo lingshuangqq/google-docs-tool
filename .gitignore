@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local Config
+.env
+.gemini/settings.json
+
+# Credentials
+credentials/
+
+# Log files
+env_log.txt
+parser_log.txt
+crash_log.txt
+heartbeat.txt

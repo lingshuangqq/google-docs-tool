@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/__init__.py
+src/google_docs_mcp_tool.egg-info/PKG-INFO
+src/google_docs_mcp_tool.egg-info/SOURCES.txt
+src/google_docs_mcp_tool.egg-info/dependency_links.txt
+src/google_docs_mcp_tool.egg-info/entry_points.txt
+src/google_docs_mcp_tool.egg-info/requires.txt
+src/google_docs_mcp_tool.egg-info/top_level.txt
+src/server/__init__.py
+src/server/mcp_server.py
+src/tool/__init__.py
+src/tool/google_docs_tool.py
+src/tool/run_tool.py
+test/test_integration_google_docs_tool.py
+test/test_local_google_docs_tool.py

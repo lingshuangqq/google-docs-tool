@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "google_docs_mcp_tool"
+version = "1.0.0"
+authors = [
+  { name="Gemini User", email="user@example.com" },
+]
+description = "A tool to manipulate Google Docs via an MCP server."
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "pydantic",
+]
+
+[project.scripts]
+google-docs-tool = "src.server.mcp_server:main"
