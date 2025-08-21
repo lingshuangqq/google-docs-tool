@@ -18,7 +18,7 @@ env/
 .gemini/settings.json
 
 # Credentials
-credentialls/
+credentials/
 
 # Log files
 env_log.txt
