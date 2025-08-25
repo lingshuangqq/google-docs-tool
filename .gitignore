@@ -27,4 +27,7 @@ parser_log.txt
 env_log.txt
 
 # macOS
-.DS_Store\n# Test Assets\ntest/image/
+.DS_Store
+
+# Test Assets
+test/image/
