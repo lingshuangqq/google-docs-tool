@@ -25,3 +25,6 @@ env_log.txt
 parser_log.txt
 crash_log.txt
 heartbeat.txt
+
+# temp test data
+test/image\n# macOS\n.DS_Store
