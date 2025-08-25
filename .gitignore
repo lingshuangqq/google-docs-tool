@@ -6,6 +6,9 @@ __pycache__/
 .Python
 env/
 .venv/
+*.egg-info/
+build/
+dist/
 
 # IDE / Editor
 .vscode/
@@ -13,22 +16,15 @@ env/
 *.swp
 *.swo
 
-# Local Config
+# Local Config & Credentials
 .env
-.gemini/settings.json
-
-# Credentials
+.gemini/
 credentials/
+token.json
 
 # Log files
-env_log.txt
 parser_log.txt
-crash_log.txt
-heartbeat.txt
-
-# temp test data
-test/image
+env_log.txt
 
 # macOS
-.DS_Store
-\n# User-specific files\ntoken.json\n*.md
+.DS_Store\n# Test Assets\ntest/image/
