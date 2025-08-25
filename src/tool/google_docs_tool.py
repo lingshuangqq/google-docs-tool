@@ -1,177 +1,146 @@
-import json
-import sys
 import re
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
-# --- Constants ---
-SCOPES = ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive"]
 
 # --- Internal Helper Functions ---
 
-def _get_docs_service(credentials_file_path: str):
-    creds = Credentials.from_service_account_file(credentials_file_path, scopes=SCOPES)
-    return build("docs", "v1", credentials=creds)
-
-def _execute_batch_update(service, document_id: str, requests: list) -> dict:
-    if not requests:
-        return {"status": "success", "message": "No requests to execute."}
+def _execute_batch_update(docs_service, document_id: str, requests: list) -> dict:
+    """Executes a batchUpdate request and handles common errors."""
     try:
-        service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
+        if not requests:
+            return {"status": "success", "message": "No changes were needed."}
+        docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
         return {"status": "success", "message": f"Successfully updated document {document_id}."}
     except HttpError as err:
-        return {"status": "error", "message": f"An HttpError occurred: {err.reason}"}
+        error_message = f"An HttpError occurred: {err.reason}"
+        return {"status": "error", "message": error_message}
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
-# --- Markdown Processing Helpers ---
+# --- Markdown Parsing and Request Generation ---
 
-def _handle_paragraph_style(line: str):
-    if line.startswith('# '):
-        return line[2:], {'namedStyleType': 'HEADING_1'}
-    if line.startswith('## '):
-        return line[3:], {'namedStyleType': 'HEADING_2'}
-    if line.startswith('### '):
-        return line[4:], {'namedStyleType': 'HEADING_3'}
-    return line, None
+def _get_markdown_requests(markdown_text: str, start_index: int):
+    """Converts a markdown string into a list of Google Docs API requests."""
+    all_requests = []
+    current_index = start_index
+    lines = markdown_text.split('\n')
 
-def _handle_inline_styles(text: str, start_index: int):
-    requests = []
-    parts = re.split(r'(\*\*.*?\*\*)', text)
-    current_pos = start_index
-    total_len = 0
+    for line in lines:
+        line_start_index = current_index
+        text_to_process = line
+        paragraph_style = None
 
-    for part in parts:
-        if not part:
-            continue
-        is_bold = part.startswith('**') and part.endswith('**')
-        content = part.strip('*') if is_bold else part
-        content_len = len(content)
+        # 1. Handle Paragraph Style (Headers)
+        if line.startswith('# '):
+            text_to_process = line[2:]
+            paragraph_style = {'namedStyleType': 'HEADING_1'}
+        elif line.startswith('## '):
+            text_to_process = line[3:]
+            paragraph_style = {'namedStyleType': 'HEADING_2'}
+        elif line.startswith('### '):
+            text_to_process = line[4:]
+            paragraph_style = {'namedStyleType': 'HEADING_3'}
 
-        if content:
-            requests.append({'insertText': {'location': {'index': current_pos}, 'text': content}})
-            requests.append({
-                'updateTextStyle': {
-                    'range': {'startIndex': current_pos, 'endIndex': current_pos + content_len},
-                    'textStyle': {'bold': is_bold},
-                    'fields': 'bold'
-                }
-            })
-            current_pos += content_len
-            total_len += content_len
-            
-    return requests, total_len
-
-def _is_table_line(line: str) -> bool:
-    stripped = line.strip()
-    return stripped.startswith('|') and stripped.endswith('|') and not re.match(r'^\|[:\-s|]+$', stripped)
-
-def _is_table_separator(line: str) -> bool:
-    return re.match(r'^\|[:\-s|]+$', line.strip()) is not None
-
-def _parse_table_row(line: str) -> list[str]:
-    if not line.strip():
-        return []
-    return [cell.strip() for cell in line.strip().strip('|').split('|')]
-
-def _handle_table(table_lines: list[str], start_index: int):
-    if not table_lines:
-        return [], 0
-
-    header_cells = _parse_table_row(table_lines[0])
-    num_columns = len(header_cells)
-    data_rows_content = [_parse_table_row(line) for line in table_lines[1:]]
-    num_rows = len(data_rows_content) + 1
-
-    requests = [{'insertTable': {'location': {'index': start_index},'rows': num_rows,'columns': num_columns}}]
-
-    current_pos = start_index + 4
-    total_inserted_len = 0
-
-    all_rows = [header_cells] + data_rows_content
-
-    for row in all_rows:
-        while len(row) < num_columns:
-            row.append("")
-        row = row[:num_columns]
-
-        for cell_text in row:
-            inline_reqs, inserted_len = _handle_inline_styles(cell_text, current_pos)
-            requests.extend(inline_reqs)
-            current_pos += inserted_len
-            total_inserted_len += inserted_len
-            current_pos += 2
-
-    final_len = total_inserted_len + (num_rows * num_columns * 2) + 2
-    return requests, final_len
-
-# --- Main Public Function (Orchestrator) ---
-def process_markdown_v2(document_id: str, markdown_text: str, credentials_file_path: str) -> dict:
-    try:
-        service = _get_docs_service(credentials_file_path)
-        doc = service.documents().get(documentId=document_id).execute() 
+        # 2. Handle Inline Styles (Bold)
+        matches = list(re.finditer(r'\*\*(.*?)\*\*', text_to_process))
+        last_end = 0
         
-        body_content = doc.get('body', {}).get('content', [])
-        start_index = 1
-        if body_content and body_content[-1].get('endIndex'):
-            start_index = body_content[-1].get('endIndex') - 1
+        if not matches:
+            if text_to_process:
+                all_requests.append({'insertText': {'location': {'index': current_index}, 'text': text_to_process}})
+                all_requests.append({'updateTextStyle': {'range': {'startIndex': current_index, 'endIndex': current_index + len(text_to_process)}, 'textStyle': {'bold': False}, 'fields': 'bold'}})
+                current_index += len(text_to_process)
+        else:
+            for match in matches:
+                start, end = match.span()
+                plain_text_before = text_to_process[last_end:start]
+                if plain_text_before:
+                    all_requests.append({'insertText': {'location': {'index': current_index}, 'text': plain_text_before}})
+                    all_requests.append({'updateTextStyle': {'range': {'startIndex': current_index, 'endIndex': current_index + len(plain_text_before)}, 'textStyle': {'bold': False}, 'fields': 'bold'}})
+                    current_index += len(plain_text_before)
+                
+                bold_text = match.group(1)
+                if bold_text:
+                    all_requests.append({'insertText': {'location': {'index': current_index}, 'text': bold_text}})
+                    all_requests.append({'updateTextStyle': {'range': {'startIndex': current_index, 'endIndex': current_index + len(bold_text)}, 'textStyle': {'bold': True}, 'fields': 'bold'}})
+                    current_index += len(bold_text)
+                last_end = end
+
+            plain_text_after = text_to_process[last_end:]
+            if plain_text_after:
+                all_requests.append({'insertText': {'location': {'index': current_index}, 'text': plain_text_after}})
+                all_requests.append({'updateTextStyle': {'range': {'startIndex': current_index, 'endIndex': current_index + len(plain_text_after)}, 'textStyle': {'bold': False}, 'fields': 'bold'}})
+                current_index += len(plain_text_after)
+
+        all_requests.append({'insertText': {'location': {'index': current_index}, 'text': '\n'}})
+        if paragraph_style:
+            all_requests.append({'updateParagraphStyle': {'range': {'startIndex': line_start_index, 'endIndex': current_index}, 'paragraphStyle': paragraph_style, 'fields': 'namedStyleType'}})
+        current_index += 1
+
+    return all_requests
+
+# --- Main Public Functions ---
+
+def replace_markdown_placeholders(docs_service, document_id: str, replacements: dict):
+    """Finds and replaces multiple placeholders with formatted markdown content."""
+    try:
+        doc = docs_service.documents().get(documentId=document_id, fields='body(content)').execute()
+        content = doc.get('body', {}).get('content', [])
+        
+        found_holders = []
+        for element in content:
+            if 'paragraph' in element:
+                for run in element['paragraph']['elements']:
+                    if 'textRun' in run and run['textRun']['content']:
+                        segment_text = run['textRun']['content']
+                        for key in replacements.keys():
+                            for match in re.finditer(re.escape(key), segment_text):
+                                start = run['startIndex'] + match.start()
+                                end = run['startIndex'] + match.end()
+                                found_holders.append({'key': key, 'range': {'startIndex': start, 'endIndex': end}})
+
+        found_holders.sort(key=lambda x: x['range']['startIndex'], reverse=True)
+        
+        if not found_holders:
+            return {"status": "error", "message": "Could not find any of the specified placeholders."}
 
         all_requests = []
-        current_index = start_index
-        lines = markdown_text.split('\n')
-        
-        table_buffer = []
+        for holder in found_holders:
+            key = holder['key']
+            markdown_content = replacements[key]
+            start_index = holder['range']['startIndex']
 
-        def flush_table_buffer():
-            nonlocal current_index, all_requests, service, doc
-            if table_buffer:
-                if all_requests:
-                    _execute_batch_update(service, document_id, all_requests)
-                    all_requests = []
-                
-                doc = service.documents().get(documentId=document_id).execute()
-                current_index = doc.get('body', {}).get('content', [])[-1].get('endIndex', 1) -1
+            all_requests.append({'deleteContentRange': {'range': holder['range']}})
+            
+            # Get the list of requests for the markdown content
+            markdown_requests = _get_markdown_requests(markdown_content, start_index)
+            all_requests.extend(markdown_requests)
+            
+        return _execute_batch_update(docs_service, document_id, all_requests)
 
-                table_reqs, _ = _handle_table(table_buffer, current_index)
-                _execute_batch_update(service, document_id, table_reqs)
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
-                doc = service.documents().get(documentId=document_id).execute()
-                current_index = doc.get('body', {}).get('content', [])[-1].get('endIndex', 1) - 1
+def create_doc(drive_service, title: str, folder_id: str = None):
+    """Creates a new Google Doc."""
+    file_metadata = {'name': title, 'mimeType': 'application/vnd.google-apps.document'}
+    if folder_id:
+        file_metadata['parents'] = [folder_id]
+    try:
+        file = drive_service.files().create(body=file_metadata, fields='id').execute()
+        return {"status": "success", "document_id": file.get('id')}
+    except Exception as e:
+        return {"status": "error", "message": f"An error occurred creating the document: {e}"}
 
-                table_buffer.clear()
-
-        for line in lines:
-            if _is_table_separator(line):
-                continue
-
-            if _is_table_line(line):
-                table_buffer.append(line)
-            else:
-                flush_table_buffer()
-                
-                line_start_index = current_index
-                text_to_process, paragraph_style = _handle_paragraph_style(line)
-                
-                inline_requests, inserted_len = _handle_inline_styles(text_to_process, current_index)
-                all_requests.extend(inline_requests)
-                current_index += inserted_len
-
-                all_requests.append({'insertText': {'location': {'index': current_index}, 'text': '\n'}})
-                current_index += 1
-
-                if paragraph_style:
-                    all_requests.append({
-                        'updateParagraphStyle': {
-                            'range': {'startIndex': line_start_index, 'endIndex': current_index},
-                            'paragraphStyle': paragraph_style,
-                            'fields': 'namedStyleType'
-                        }
-                    })
-
-        flush_table_buffer()
-
-        return _execute_batch_update(service, document_id, all_requests)
-
+def clear_google_doc(docs_service, document_id: str) -> dict:
+    """Deletes all content from a Google Doc."""
+    try:
+        doc = docs_service.documents().get(documentId=document_id).execute()
+        body_content = doc.get('body', {}).get('content', [])
+        if len(body_content) > 1:
+            end_index = body_content[-1].get('endIndex', 1)
+            if end_index > 2:
+                requests = [{'deleteContentRange': {'range': {'startIndex': 1, 'endIndex': end_index - 1}}}]
+                return _execute_batch_update(docs_service, document_id, requests)
+        return {"status": "success", "message": "Document is already empty."}
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}

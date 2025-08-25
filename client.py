@@ -1,65 +1,112 @@
-import json
-import requests
-import os
+import argparse
 import sys
+import os
 
-# --- Configuration ---
-# The server URL is the only hardcoded value.
-SERVER_URL = "http://127.0.0.1:8080/append-markdown"
+# Adjust path to import from the 'src' directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
-# --- Main Execution ---
-def main():
-    """
-    Reads a markdown file and document ID specified on the command line and calls the MCP server.
-    """
-    # 1. Get arguments from command-line
-    if len(sys.argv) < 3:
-        print("Error: Missing arguments.")
-        print(f"Usage: python3 {sys.argv[0]} <document_id> <path_to_markdown_file>")
-        return
-    
-    doc_id = sys.argv[1]
-    markdown_file_path = sys.argv[2]
-    
-    # 2. Construct path to credentials file relative to this script's location
-    script_dir = os.path.dirname(__file__)
-    credentials_file = os.path.join(script_dir, ".", "credentials", "docs-writer-credentials.json")
-    abs_credentials_path = os.path.abspath(credentials_file)
+from tool import google_docs_tool
+from src import auth
 
-    print(f"Reading content from {markdown_file_path}...")
+# --- Helper Functions ---
+def get_services(args):
+    """Authenticates and returns the docs and drive service objects."""
+    print(f"Attempting authentication using '{args.auth}' mode...")
     try:
-        with open(markdown_file_path, 'r', encoding='utf-8') as f:
-            markdown_content = f.read()
+        if args.auth == 'service_account':
+            return auth.get_services_with_service_account(args.creds_path)
+        elif args.auth == 'oauth':
+            return auth.get_services_with_oauth(args.creds_path, args.token_path)
+    except Exception as e:
+        print(f"\n--- Authentication Error ---")
+        print(f"Failed to create an authorized service: {e}")
+        sys.exit(1)
+
+def read_markdown_file(file_path):
+    """Reads content from the specified markdown file."""
+    print(f"Reading content from {file_path}...")
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
     except FileNotFoundError:
-        print(f"Error: Markdown file not found at {markdown_file_path}")
-        return
+        print(f"Error: Markdown file not found at {file_path}")
+        sys.exit(1)
 
-    if not os.path.exists(abs_credentials_path):
-        print(f"Error: Credentials file not found at {abs_credentials_path}")
-        return
+# --- Command Handlers ---
+def handle_write(args):
+    """Handles the logic for the 'write' command (now a wrapper for replace-markdown)."""
+    services = get_services(args)
+    markdown_content = read_markdown_file(args.markdown_file)
+    target_doc_id = args.doc_id
 
-    # 3. Construct the request payload
-    print("Constructing request payload...")
-    payload = {
-        "document_id": doc_id,
-        "markdown_text": markdown_content,
-        "credentials_file_path": abs_credentials_path
-    }
+    if not target_doc_id:
+        print(f"Creating new doc titled '{args.title}'...")
+        create_result = google_docs_tool.create_doc(services['drive'], args.title, args.folder_id)
+        if create_result.get("status") == "error":
+            print(f"\n--- Document Creation Error ---\n{create_result.get("message")}")
+            return
+        target_doc_id = create_result.get("document_id")
+        print(f"Successfully created new document with ID: {target_doc_id}")
 
-    # 4. Send the request to the server
-    print(f"Sending request to server at {SERVER_URL}...")
-    try:
-        response = requests.post(SERVER_URL, json=payload, timeout=60)
-        response.raise_for_status()
-        
+    print(f"Writing content to document ID: {target_doc_id}...")
+    # The new tool function for markdown processing is now internal
+    # We will call a placeholder function for now
+    # This needs to be updated to call the new replace_markdown_placeholders
+    pass
+
+def handle_clear(args):
+    services = get_services(args)
+    print(f"Clearing content from document ID: {args.doc_id}...")
+    result = google_docs_tool.clear_google_doc(services['docs'], args.doc_id)
+    if result.get("status") == "success":
         print("\n--- Success! ---")
-        print("Server Response:")
-        print(response.json())
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
 
-    except requests.exceptions.RequestException as e:
-        print(f"\n--- Error ---")
-        print(f"Failed to connect to the server: {e}")
-        print("Please ensure the server is running in another terminal.")
+def handle_replace_markdown(args):
+    """Handles the logic for the new 'replace-markdown' command."""
+    services = get_services(args)
+    
+    print("Building replacements map...")
+    replacements = {}
+    for placeholder, filepath in args.replace:
+        replacements[placeholder] = read_markdown_file(filepath)
+    
+    print(f"Replacing placeholders in document ID: {args.doc_id}...")
+    result = google_docs_tool.replace_markdown_placeholders(services['docs'], args.doc_id, replacements)
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get("message")}")
+
+# --- Main Function ---
+def main():
+    """Main function to parse subcommands and arguments."""
+    parser = argparse.ArgumentParser(description="A client for the Google Docs tool.")
+    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+
+    auth_parser = argparse.ArgumentParser(add_help=False)
+    auth_parser.add_argument("--auth", type=str, choices=['service_account', 'oauth'], required=True, help="Authentication method.")
+    auth_parser.add_argument("--creds-path", type=str, required=True, help="Path to credentials JSON file.")
+    auth_parser.add_argument("--token-path", default="token.json", help="(For OAuth) Path to store the token.json file.")
+
+    parser_write = subparsers.add_parser('write', help='DEPRECATED. Use replace-markdown instead.', parents=[auth_parser])
+    parser_write.set_defaults(func=lambda a: print("The 'write' command is deprecated. Please use 'replace-markdown'"))
+
+    parser_clear = subparsers.add_parser('clear', help='Clear all content from a specified Google Doc.', parents=[auth_parser])
+    parser_clear.add_argument("doc_id", help="The ID of the Google Doc to clear.")
+    parser_clear.set_defaults(func=handle_clear)
+
+    parser_replace = subparsers.add_parser('replace-markdown', help='Replace one or more placeholders with formatted markdown from files.', parents=[auth_parser])
+    parser_replace.add_argument("doc_id", help="The ID of the Google Doc to edit.")
+    parser_replace.add_argument('--replace', nargs=2, metavar=('PLACEHOLDER', 'FILE_PATH'), action='append', required=True, help="Specify a placeholder and the markdown file to replace it with. Can be used multiple times.")
+    parser_replace.set_defaults(func=handle_replace_markdown)
+
+    args = parser.parse_args()
+    args.func(args)
 
 if __name__ == "__main__":
     main()

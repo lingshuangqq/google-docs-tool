@@ -31,3 +31,4 @@ test/image
 
 # macOS
 .DS_Store
+\n# User-specific files\ntoken.json\n*.md
