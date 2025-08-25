@@ -27,4 +27,7 @@ crash_log.txt
 heartbeat.txt
 
 # temp test data
-test/image\n# macOS\n.DS_Store
+test/image
+
+# macOS
+.DS_Store
