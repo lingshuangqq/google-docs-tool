@@ -20,7 +20,6 @@ dist/
 .env
 .gemini/
 credentials/
-token.json
 
 # Log files
 parser_log.txt
@@ -30,4 +29,4 @@ env_log.txt
 .DS_Store
 
 # Test Assets
-test/image/
+test/

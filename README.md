@@ -65,12 +65,12 @@
 ### 步骤 3.2: 运行客户端
 
 - 打开**另一个**终端窗口，同样进入项目根目录 (`google-docs-tool`)。
-- **命令格式**: `python3 client.py <你的文档ID> <你的Markdown文件路径>`
+- **命令格式**: `python3 src/client.py <子命令> [参数...]`
 
 - **示例**:
   ```bash
   # 假设你的报告在与 google-docs-tool 文件夹同级的目录
-  python3 client.py "1a2b3c4d5e6f7g8h9i0j" ../MyReport.md
+  python3 src/client.py write ../MyReport.md --title "My New Report" --auth oauth --creds-path ./credentials/oauth-credentials.json
   ```
 
 ## 4. 测试指南 (Testing)

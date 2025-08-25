@@ -4,11 +4,9 @@ import os
 import json
 import requests
 
-# Adjust path to import from the 'src' directory
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__name__), 'src')))
-
+# Since the client is in 'src', it can directly import other modules/packages in 'src'
 from tool import google_docs_tool
-from src import auth
+import auth
 
 # --- Configuration ---
 SERVER_BASE_URL = "http://127.0.0.1:8080"
@@ -48,7 +46,7 @@ def handle_write(args):
         print(f"No document ID provided. Creating a new document with title: '{args.title}'")
         create_result = google_docs_tool.create_doc(services['drive'], args.title, args.folder_id)
         if create_result.get("status") == "error":
-            print(f"\n--- Document Creation Error ---\n{create_result.get('message')}")
+            print(f"\n--- Document Creation Error ---\n{create_result.get("message")}")
             return
         target_doc_id = create_result.get("document_id")
         print(f"Successfully created new document with ID: {target_doc_id}")
@@ -75,14 +73,9 @@ def handle_clear(args):
 def handle_replace_markdown(args):
     """Handles the logic for the 'replace-markdown' command."""
     services = get_services(args)
-    replacements = {p: f for p, f in args.replace}
-    print(f"Building replacements map...")
-    for placeholder, filepath in replacements.items():
-        replacements[placeholder] = read_markdown_file(filepath)
-    
+    replacements = {p: read_markdown_file(f) for p, f in args.replace}
     print(f"Replacing placeholders in document ID: {args.doc_id}...")
     result = google_docs_tool.replace_markdown_placeholders(services['docs'], args.doc_id, replacements)
-    
     if result.get("status") == "success":
         print("\n--- Success! ---")
         print(result.get("message"))
