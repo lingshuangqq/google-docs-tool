@@ -1,0 +1,145 @@
+import argparse
+import sys
+import os
+import json
+import requests
+
+# Since the client is in 'src', it can directly import other modules/packages in 'src'
+from tool import google_docs_tool
+import auth
+
+# --- Configuration ---
+SERVER_BASE_URL = "http://127.0.0.1:8080"
+
+# --- Helper Functions ---
+def get_services(args):
+    """Authenticates and returns the docs and drive service objects."""
+    print(f"Attempting authentication using '{args.auth}' mode...")
+    try:
+        if args.auth == 'service_account':
+            return auth.get_services_with_service_account(args.creds_path)
+        elif args.auth == 'oauth':
+            return auth.get_services_with_oauth(args.creds_path, args.token_path)
+    except Exception as e:
+        print(f"\n--- Authentication Error ---")
+        print(f"Failed to create an authorized service: {e}")
+        sys.exit(1)
+
+def read_markdown_file(file_path):
+    """Reads content from the specified markdown file."""
+    print(f"Reading content from {file_path}...")
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Error: Markdown file not found at {file_path}")
+        sys.exit(1)
+
+# --- Command Handlers ---
+def handle_clear(args):
+    """Handles the logic for the 'clear' command."""
+    services = get_services(args)
+    print(f"Clearing content from document ID: {args.doc_id}...")
+    result = google_docs_tool.clear_google_doc(services['docs'], args.doc_id)
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+def handle_replace_markdown(args):
+    """Handles the logic for the 'replace-markdown' command."""
+    services = get_services(args)
+    
+    print("Building replacements map...")
+    replacements = {p: read_markdown_file(f) for p, f in args.replace}
+    
+    print(f"Replacing placeholders in document ID: {args.doc_id}...")
+    result = google_docs_tool.replace_markdown_placeholders(services['docs'], args.doc_id, replacements)
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+def handle_write(args):
+    """Handles the logic for the 'write' command."""
+    services = get_services(args)
+    markdown_content = read_markdown_file(args.md_path)
+    
+    print("Calling the write tool...")
+    result = google_docs_tool.write_to_google_doc(
+        docs_service=services['docs'],
+        drive_service=services['drive'],
+        markdown_content=markdown_content,
+        document_id=args.doc_id,
+        title=args.title,
+        folder_id=args.folder_id
+    )
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+        if result.get("document_id"):
+            print(f"Document ID: {result.get('document_id')}")
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+def handle_append(args):
+    """Handles the logic for the 'append' command."""
+    services = get_services(args)
+    markdown_content = read_markdown_file(args.md_path)
+    
+    print(f"Appending content to document ID: {args.doc_id}...")
+    result = google_docs_tool.append_to_google_doc(
+        docs_service=services['docs'],
+        document_id=args.doc_id,
+        markdown_content=markdown_content
+    )
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+
+
+# --- Main Function ---
+def main():
+    """Main function to parse subcommands and arguments."""
+    parser = argparse.ArgumentParser(description="A client for the Google Docs tool.")
+    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+
+    auth_parser = argparse.ArgumentParser(add_help=False)
+    auth_parser.add_argument("--auth", type=str, choices=['service_account', 'oauth'], required=True, help="Authentication method.")
+    auth_parser.add_argument("--creds-path", type=str, required=True, help="Path to credentials JSON file.")
+    auth_parser.add_argument("--token-path", default="credentials/token.json", help="(For OAuth) Path to store the token.json file.")
+
+    parser_clear = subparsers.add_parser('clear', help='Clear all content from a specified Google Doc.', parents=[auth_parser])
+    parser_clear.add_argument("doc_id", help="The ID of the Google Doc to clear.")
+    parser_clear.set_defaults(func=handle_clear)
+
+    parser_replace = subparsers.add_parser('replace-markdown', help='Replace one or more placeholders with formatted markdown from files.', parents=[auth_parser])
+    parser_replace.add_argument("doc_id", help="The ID of the Google Doc to edit.")
+    parser_replace.add_argument('--replace', nargs=2, metavar=('PLACEHOLDER', 'FILE_PATH'), action='append', required=True, help="Specify a placeholder and the markdown file to replace it with. Can be used multiple times.")
+    parser_replace.set_defaults(func=handle_replace_markdown)
+
+    parser_write = subparsers.add_parser('write', help='Write markdown content to a new or existing Google Doc.', parents=[auth_parser])
+    parser_write.add_argument("md_path", help="Path to the markdown file to write.")
+    parser_write.add_argument("--doc-id", help="The ID of an existing Google Doc to overwrite.")
+    parser_write.add_argument("--title", help="The title for a new Google Doc.")
+    parser_write.add_argument("--folder-id", help="The ID of a parent folder for a new Google Doc.")
+    parser_write.set_defaults(func=handle_write)
+
+    parser_append = subparsers.add_parser('append', help='Append markdown content to the end of a Google Doc.', parents=[auth_parser])
+    parser_append.add_argument("doc_id", help="The ID of the Google Doc to append to.")
+    parser_append.add_argument("md_path", help="Path to the markdown file to append.")
+    parser_append.set_defaults(func=handle_append)
+
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
