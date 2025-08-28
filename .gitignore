@@ -30,3 +30,4 @@ env_log.txt
 
 # Test Assets
 test/
+\n# macOS\n.DS_Store
