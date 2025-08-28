@@ -86,6 +86,25 @@ def handle_write(args):
     else:
         print(f"\n--- Tool Error---\n{result.get('message')}")
 
+def handle_append(args):
+    """Handles the logic for the 'append' command."""
+    services = get_services(args)
+    markdown_content = read_markdown_file(args.md_path)
+    
+    print(f"Appending content to document ID: {args.doc_id}...")
+    result = google_docs_tool.append_to_google_doc(
+        docs_service=services['docs'],
+        document_id=args.doc_id,
+        markdown_content=markdown_content
+    )
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+
 
 # --- Main Function ---
 def main():
@@ -113,6 +132,11 @@ def main():
     parser_write.add_argument("--title", help="The title for a new Google Doc.")
     parser_write.add_argument("--folder-id", help="The ID of a parent folder for a new Google Doc.")
     parser_write.set_defaults(func=handle_write)
+
+    parser_append = subparsers.add_parser('append', help='Append markdown content to the end of a Google Doc.', parents=[auth_parser])
+    parser_append.add_argument("doc_id", help="The ID of the Google Doc to append to.")
+    parser_append.add_argument("md_path", help="Path to the markdown file to append.")
+    parser_append.set_defaults(func=handle_append)
 
     args = parser.parse_args()
     args.func(args)

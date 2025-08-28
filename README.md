@@ -66,19 +66,24 @@
 ### 步骤 3.2: 运行客户端
 
 - 打开**另一个**终端窗口，同样进入项目根目录 (`google-docs-tool`)。
-- 使用 `src/client.py` 脚本，并指定一个子命令 (`write`, `clear`, `replace-markdown`)。
+- 使用 `src/client.py` 脚本，并指定一个子命令 (`write`, `clear`, `replace-markdown`, `append`)。
 
 **示例 1: 【写入】一个全新的文档 (使用OAuth模式)**
 ```bash
 python3 src/client.py write ../path/to/your/report.md --title "我的新报告" --auth oauth --creds-path ./credentials/oauth-credentials.json
 ```
 
-**示例 2: 【清空】一个已存在的文档 (使用服务账号模式)**
+**示例 2: 【追加】内容到现有文档末尾**
+```bash
+python3 src/client.py append "你的文档ID" ../path/to/your/updates.md --auth oauth --creds-path ./credentials/oauth-credentials.json
+```
+
+**示例 3: 【清空】一个已存在的文档 (使用服务账号模式)**
 ```bash
 python3 src/client.py clear "你的文档ID" --auth service_account --creds-path ./credentials/docs-writer-credentials.json
 ```
 
-**示例 3: 【替换】文档中的占位符 (使用OAuth模式)**
+**示例 4: 【替换】文档中的占位符 (使用OAuth模式)**
 ```bash
 # 假设文档中已有 {{MY_PLACEHOLDER}}
 python3 src/client.py replace-markdown "你的文档ID" --replace "{{MY_PLACEHOLDER}}" ../path/to/your/content.md --auth oauth --creds-path ./credentials/oauth-credentials.json
@@ -92,6 +97,9 @@ python3 src/client.py replace-markdown "你的文档ID" --replace "{{MY_PLACEHOL
 # 运行快速的本地单元测试
 ./run_tests.sh
 
-# 运行需要真实API和凭证的在线集成测试
-./run_tests.sh --online --doc-id "你的文档ID" --creds-path "./credentials/oauth-credentials.json"
+# 运行完整的在线集成测试 (需要提供一个用于测试的文档ID和文件夹ID)
+./run_tests.sh --online --doc-id "你的文档ID" --folder-id "你的文件夹ID" --creds-path "./credentials/oauth-credentials.json"
+
+# 按需运行特定的清空文档测试
+./run_tests.sh --run-clear-test --clear-doc-id "要清空的文档ID" --creds-path "./credentials/oauth-credentials.json"
 ```
