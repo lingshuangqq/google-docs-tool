@@ -4,7 +4,7 @@
 
 ## 架构图
 
-![项目架构图](./gmp_module_architecture_en.png)
+![项目架构图](./generated-diagrams/architecture.png)
 
 ---
 
