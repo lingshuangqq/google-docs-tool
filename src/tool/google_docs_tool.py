@@ -170,3 +170,56 @@ def clear_google_doc(docs_service, document_id: str) -> dict:
         return {"status": "success", "message": "Document is already empty."}
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+
+def write_to_google_doc(docs_service, drive_service, markdown_content: str, title: str = "Untitled Document", document_id: str = None, folder_id: str = None) -> dict:
+    """
+    Writes markdown content to a Google Doc. Creates a new doc if document_id is not provided.
+    
+    Args:
+        docs_service: Authorized Google Docs service object.
+        drive_service: Authorized Google Drive service object.
+        markdown_content (str): The markdown text to write.
+        title (str): The title for a new document.
+        document_id (str, optional): The ID of an existing document.
+        folder_id (str, optional): The ID of a parent folder for a new document.
+
+    Returns:
+        A dictionary with the status and message.
+    """
+    try:
+        # 1. Create a new document if no ID is provided
+        if not document_id:
+            print("No document ID provided, creating a new document...")
+            creation_result = create_doc(drive_service, title, folder_id)
+            if creation_result["status"] == "error":
+                return creation_result # Propagate the error
+            document_id = creation_result["document_id"]
+            print(f"Successfully created new document with ID: {document_id}")
+        
+        # 2. Clear the document before writing new content
+        print(f"Clearing document {document_id} before writing...")
+        clear_result = clear_google_doc(docs_service, document_id)
+        if clear_result["status"] == "error":
+            # Don't stop for a clear error, just log it. The doc might be empty.
+            print(f"Warning: Could not clear document. {clear_result['message']}")
+
+        # 3. Get markdown conversion requests
+        print("Converting markdown to Google Docs format...")
+        # The document is now empty, so we start writing at index 1
+        requests = _get_markdown_requests(markdown_content, start_index=1)
+
+        # 4. Execute the batch update to write the content
+        print("Writing content to the document...")
+        write_result = _execute_batch_update(docs_service, document_id, requests)
+        
+        if write_result["status"] == "success":
+            return {
+                "status": "success",
+                "message": f"Successfully wrote content to document {document_id}.",
+                "document_id": document_id
+            }
+        else:
+            return write_result
+
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred during the write process: {e}"}

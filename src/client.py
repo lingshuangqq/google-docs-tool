@@ -61,7 +61,31 @@ def handle_replace_markdown(args):
         print("\n--- Success! ---")
         print(result.get("message"))
     else:
-        print(f"\n--- Tool Error---\n{result.get("message")}")
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
+def handle_write(args):
+    """Handles the logic for the 'write' command."""
+    services = get_services(args)
+    markdown_content = read_markdown_file(args.md_path)
+    
+    print("Calling the write tool...")
+    result = google_docs_tool.write_to_google_doc(
+        docs_service=services['docs'],
+        drive_service=services['drive'],
+        markdown_content=markdown_content,
+        document_id=args.doc_id,
+        title=args.title,
+        folder_id=args.folder_id
+    )
+    
+    if result.get("status") == "success":
+        print("\n--- Success! ---")
+        print(result.get("message"))
+        if result.get("document_id"):
+            print(f"Document ID: {result.get('document_id')}")
+    else:
+        print(f"\n--- Tool Error---\n{result.get('message')}")
+
 
 # --- Main Function ---
 def main():
@@ -82,6 +106,13 @@ def main():
     parser_replace.add_argument("doc_id", help="The ID of the Google Doc to edit.")
     parser_replace.add_argument('--replace', nargs=2, metavar=('PLACEHOLDER', 'FILE_PATH'), action='append', required=True, help="Specify a placeholder and the markdown file to replace it with. Can be used multiple times.")
     parser_replace.set_defaults(func=handle_replace_markdown)
+
+    parser_write = subparsers.add_parser('write', help='Write markdown content to a new or existing Google Doc.', parents=[auth_parser])
+    parser_write.add_argument("md_path", help="Path to the markdown file to write.")
+    parser_write.add_argument("--doc-id", help="The ID of an existing Google Doc to overwrite.")
+    parser_write.add_argument("--title", help="The title for a new Google Doc.")
+    parser_write.add_argument("--folder-id", help="The ID of a parent folder for a new Google Doc.")
+    parser_write.set_defaults(func=handle_write)
 
     args = parser.parse_args()
     args.func(args)
